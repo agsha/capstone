@@ -5,8 +5,6 @@ from datetime import date
 from dateutil.relativedelta import relativedelta  # $ pip install python-dateutil
 
 
-def main():
-    testSimulate2()
 
 
 M = 1000000
@@ -33,50 +31,193 @@ def simulate(oldPrice, oldPerf, oldSz, oldMtbf, oldCap, oldAut, startAgeYears, p
 
 
 def testSimulate2():
-    x = simulate2()
+    x = testSalesEat()
     # perfX, szY, rndYears = zip(*x)
     # print(perfX)
 
-
+products = {
+    "eat":{
+        "price": 28,
+        "perf": 5.5,
+        "sz": 14.5,
+        "mtbf": 17.5*K,
+        "ageYears": 3.1,
+        "awareness": .55,
+        "accessibility":.37,
+        "aut": 4,
+        "capacity": 1800*K,
+        "overProduction": 0,
+        "score": {
+            "traditional": 0.136,
+        },
+    }, "ebb": {
+        "price": 21,
+        "perf": 3,
+        "sz": 17,
+        "mtbf": 14*K,
+        "ageYears": 4.6,
+        "awareness": .52,
+        "accessibility":.4,
+        "aut": 5,
+        "capacity": 1400*K,
+        "overProduction": .3,
+        "score": {
+            "traditional": .0303,
+            "low":1/6
+        },
+    }, "echo": {
+        "price": 38,
+        "perf": 8,
+        "sz": 12,
+        "mtbf": 23*K,
+        "ageYears": 1.7,
+        "awareness": .49,
+        "accessibility":.48,
+        "aut": 3,
+        "capacity": 900,
+        "overProduction": 0,
+        "score": {
+            "high": 1/6,
+        },
+    }, "edge": {
+        "price": 33,
+        "perf": 9.4,
+        "sz": 15.5,
+        "mtbf": 25*K,
+        "ageYears": 2.5,
+        "awareness": .46,
+        "accessibility":.37,
+        "aut": 3,
+        "capacity": 600*K,
+        "overProduction": 0,
+        "score": {
+            "performance": 1/6,
+        },
+    }, "egg": {
+        "price": 33,
+        "perf": 4,
+        "sz": 11,
+        "mtbf": 19*K,
+        "ageYears": 2.6,
+        "awareness": .46,
+        "accessibility":.42,
+        "aut": 3,
+        "capacity": 600*K,
+        "overProduction": 0,
+        "score": {
+            "size": .155,
+        },
+    }
+}
+def main():
+    testSalesEat()
 
 def simulate2():
-    seg = segments["low"]
-    ebbPerf, ebbSz, ebbMtbf = 3, 17, 14000
-    perff = np.linspace(ebbPerf - 5, ebbPerf + 5, 20)
-    szz = np.linspace(ebbSz - 5, ebbSz + 5, 20)
+    segment = "performance"
+    seg = segments[segment]
+    product = products["edge"]
+    estimatedSalesPerYear = seg["demand"]
+    baseScoreEmpiricalDenominator = score(seg, product["ageYears"], product["price"], product["perf"], product["sz"], product["mtbf"], product["awareness"], product["accessibility"])
+    baseScoreReal = product["score"][segment]
+    aut = product["aut"]
+    overProduction = product["overProduction"]
+
+    ebbPerf, ebbSz, ebbMtbf = product["perf"], product["sz"], product["mtbf"]
+
+    perff = list(np.linspace(ebbPerf-5, ebbPerf, 30)) + list(np.linspace(ebbPerf, ebbPerf+5, 30))[1:]
+    szz = list(np.linspace(ebbSz-5, ebbSz, 20)) + list(np.linspace(ebbSz, ebbSz+5, 20))[1:]
+    pricee = list(np.linspace(seg["price"][0], product["price"], 20)) + list(np.linspace(product["price"], seg["price"][1], 20))[1:]
     ll = []
     dummy = 0
     for perf in perff:
-        # if perf != 3:
+        # if abs(perf - ebbPerf) > .01:
         #     continue
         for sz in szz:
             if perf <= 0 or sz <= 0:
                 continue
-            # if sz != 17:
+            # if abs(sz - ebbSz) > .01:
             #     continue
             for mtbf in range(seg["mtbf"][0], seg["mtbf"][1] + 1000, 1000):
+                # if abs(mtbf - ebbMtbf) > 1500:
+                #     continue
                 d = dist(ebbPerf, ebbSz, perf, sz)
-                rndYear = rndTimeYears(5, d, abs(ebbMtbf - mtbf), 3)
+                rndYear = rndTimeYears(aut, d, abs(ebbMtbf - mtbf), 3)
                 if rndYear < 1:
                     dummy += 1
-                    for price in np.linspace(*seg["price"], 20):
-                        totalScore = 0
-                        for month in range(1, 24):
-                            seg2 = segmentState(month, seg)
-                            age = currentAgeYears(month, rndYear, 4.6)
-                            aware = awareness(month, rndYear)
-                            tperf, tsz, tmtbf = ebbPerf, ebbSz, ebbMtbf
-                            if month >= rndYear*12:
-                                tperf, tsz, tmtbf = perf, sz, mtbf
-                            sc = score(seg2, age, price, tperf, tsz, tmtbf, aware, .5)
-                            cost = totalVariableCostExistingProduct(tperf, tsz, tmtbf, 5, .31, month)
-                            totalScore += sc*cost
-                        ll.append(totalScore)
-                        # if totalScore >450:
-                        #     ll.append((perf, sz, rndYear*12))
-                        #     print("dist:{} perf:{} sz:{} mtbf:{} price:{} rndTimeMonths:{} totalScore:{}".format(d, perf, sz, mtbf, price, rndYear*12, totalScore))
+                    for price in pricee:
+                        # if abs(price - product["price"]) > .01:
+                        #     continue
+                        estimatedRevenue = 0
+                        estimatedCost = 0
+                        for month in range(1, 12):
+                            estimatedCostDelta, estimatedRevenueDelta = sales(baseScoreEmpiricalDenominator, baseScoreReal,                                                                    ebbMtbf, ebbPerf, ebbSz, estimatedSalesPerYear, month,                                                                    mtbf, perf, sz, price, rndYear, seg, aut, overProduction)
+                            estimatedCost += estimatedCostDelta
+                            estimatedRevenue += estimatedRevenueDelta
+
+                        estimatedCost += rndYear*M
+                        if estimatedCost == 0:
+                            continue
+                        totalScore = estimatedRevenue/estimatedCost
+                        revenueGrowth = estimatedRevenue/(price *estimatedSalesPerYear*baseScoreReal)
+                        # print("c:{} s:{}, s/c:{}".format(estimatedCost, estimatedRevenue, estimatedRevenue/estimatedCost))
+                        # if totalScore > 1.4:
+                        # ll.append(totalScore)
+                        if totalScore > 1.35 and revenueGrowth>1.8:
+                            # ll.append(revenueGrowth)
+                            ll.append((perf, sz, rndYear*12))
+                            print("dist:{} perf:{} sz:{} mtbf:{} price:{} rndTimeMonths:{} totalScore:{} revenue:{} sales {} growthInRev:{}".format(d, perf, sz, mtbf, price, rndYear*12, totalScore, estimatedRevenue, estimatedRevenue/price, revenueGrowth))
     return ll
 
+def testSalesEat():
+    segment = "size"
+    seg = segments[segment]
+    product = products["egg"]
+    baseScoreEmpiricalDenominator = score(seg, product["ageYears"], product["price"], product["perf"], product["sz"], product["mtbf"], product["awareness"], product["accessibility"])
+    baseScoreReal = product["score"][segment]
+    estimatedSalesPerYear = seg["demand"]
+
+    aut = product["aut"]
+    overProduction = product["overProduction"]
+    price = product["price"]
+    ebbPerf, ebbSz, ebbMtbf = product["perf"], product["sz"], product["mtbf"]
+    aPerf, aSz, aMtbf, aPrice = 4.1, 11, 19000, 31 #24 mar
+    sale = 0
+    s = 0
+    c = 0
+    print("baseMul:{} baseSales:{} BaseadjSales:{} baseScore:{}".format(baseScoreReal, estimatedSalesPerYear, baseScoreReal*estimatedSalesPerYear, baseScoreEmpiricalDenominator))
+    print("=============")
+    for month in range(1, 13):
+
+        estimatedCost, estimatedRevenue = sales(baseScoreEmpiricalDenominator, baseScoreReal, ebbMtbf, ebbPerf, ebbSz, estimatedSalesPerYear, month, aMtbf, aPerf, aSz, aPrice, .24/12, seg, aut, overProduction)
+        s+=estimatedRevenue
+        c += estimatedCost
+        sale += estimatedRevenue/price
+    d = dist(ebbPerf, ebbSz, aPerf, aSz)
+    rndYear = rndTimeYears(aut, d, abs(ebbMtbf - aMtbf), aut)
+    c+=rndCost(rndYear)
+
+    profitMargin = s/c
+    growthInSales = s/(price *estimatedSalesPerYear*baseScoreReal)
+    print("Totalrevenue:{} Totalcost:{} Totalsales:{} profitMargin:{} growthInSales:{}, rndYear:{} ".format(s, c, sale, profitMargin, growthInSales, rndYear))
+
+
+def sales(baseScoreEmpiricalDenominator, baseScoreReal, ebbMtbf, ebbPerf, ebbSz,
+          estimatedSalesPerYear, month, mtbf, perf, sz, price, rndYear, seg, aut, overProduction):
+    seg2 = segmentState(month, seg)
+    age = currentAgeYears(month, rndYear, 4.6)
+    aware = awareness(month, rndYear)
+    tperf, tsz, tmtbf = ebbPerf, ebbSz, ebbMtbf
+    if month >= rndYear * 12:
+        tperf, tsz, tmtbf = perf, sz, mtbf
+    sc = score(seg2, age, price, tperf, tsz, tmtbf, aware, .5)
+    baseScoreEmpirical = sc / baseScoreEmpiricalDenominator
+    scoreMultiplier = baseScoreEmpirical * baseScoreReal / (1 + baseScoreEmpirical * baseScoreReal - baseScoreReal)
+    estimatedSalesAdjMonth = scoreMultiplier * estimatedSalesPerYear * (seg2["growth"] ** int((month + 11) / 12)) / 12
+    cost = totalVariableCostExistingProduct(tperf, tsz, tmtbf, aut, overProduction, month)
+    estimatedRevenue = estimatedSalesAdjMonth * price
+    estimatedCost = estimatedSalesAdjMonth * cost
+    # print("month:{}, mul: {}, adjSales:{} varCost:{} totalCost:{} sc:{}".format(month, scoreMultiplier, estimatedSalesAdjMonth*12, cost, estimatedCost, sc))
+    return estimatedCost, estimatedRevenue
 
 
 # tested
@@ -88,18 +229,23 @@ def testRndEbb():
     print("revision date is ", start + relativedelta(days=int(deltaYears * 365)))
     print("cost is ", rndCost(deltaYears))
 
+def testSegmentState():
+    seg = segmentState(1, segments["low"])
 
-# TODO
+    print(json.dumps(seg, indent=2))
+
+
 def segmentState(month, segment):
     seg = segment.copy()
-    year = month / 12
+    year = (month)/ 12
+    yearInt = int((month + 11)/12)
     p = seg["pos"]
     driftPerYear = seg["driftPerYear"]
-    seg["pos"] = [p[0] - year * driftPerYear[0], p[1] - year * driftPerYear[1], \
-                  p[2] - year * driftPerYear[0], p[3] - year * driftPerYear[1]]
-    if year > 1:
-        seg["demand"] *= ((1 + seg["growth"]) ** year)
-        seg["price"] = [seg["price"][0] - 0.5 * int(year), seg["price"][1] - 0.5 * int(year)]
+    seg["pos"] = [p[0] + year * driftPerYear[0], p[1] + year * driftPerYear[1], \
+                  p[2] + year * driftPerYear[0], p[3] + year * driftPerYear[1]]
+    if yearInt >= 1:
+        seg["demand"] *= (seg["growth"] ** yearInt)
+        seg["price"] = [seg["price"][0] - 0.5 * yearInt, seg["price"][1] - 0.5 * yearInt]
     return seg
 
 
@@ -115,7 +261,7 @@ skipRevision = True if the device is not really revised due to no change in posi
 
 
 def currentAgeYears(month, rndYears, startAgeYears, skipRevision=False):
-    if month / 12 < rndYears or skipRevision:
+    if month / 12 < rndYears or skipRevision or rndYears == 0:
         return startAgeYears + month / 12.0
     else:
         ageAtRevision = (startAgeYears + rndYears) / 2
@@ -130,7 +276,7 @@ segments = {
         "pos": [5, 15, 5, 15],
         "mtbf": [14000, 19000],
         "weights": [.47, .23, .21, .09],
-        "growth": .092,
+        "growth": 1.092,
         "driftPerYear": [.7, -.7],
         "demand": 7387 * K
     },
@@ -140,7 +286,7 @@ segments = {
         "pos": [2.5, 17.5, 1.7, 18.3],
         "mtbf": [12000, 17000],
         "weights": [.47, .23, .21, .09],
-        "growth": .117,
+        "growth": 1.117,
         "driftPerYear": [.5, -.5],
         "demand": 8960 * K
 
@@ -152,7 +298,7 @@ segments = {
         "pos": [7.5, 12.5, 8.9, 11.1],
         "mtbf": [20000, 25000],
         "weights": [.47, .23, .21, .09],
-        "growth": .162,
+        "growth": 1.162,
         "driftPerYear": [.9, -.9],
         "demand": 2554 * K,
     },
@@ -162,7 +308,7 @@ segments = {
         "pos": [8.0, 17.0, 9.4, 16.0],
         "mtbf": [22000, 27000],
         "weights": [.47, .23, .21, .09],
-        "growth": .198,
+        "growth": 1.198,
         "driftPerYear": [1, -.7],
         "demand": 1915 * K
 
@@ -173,7 +319,7 @@ segments = {
         "pos": [3.0, 12.0, 4.0, 10.6],
         "mtbf": [16000, 21000],
         "weights": [.47, .23, .21, .09],
-        "growth": .183,
+        "growth": 1.183,
         "driftPerYear": [.7, -1.0],
         "demand": 1984 * K
     }
@@ -215,7 +361,7 @@ awarenessCurve = [[0, .52], [1, .52 - .33 / 12 + .4 / 12]]
 def awareness(month, revisionTimeYears):
     baseAwareNess = yy(awarenessCurve, month, 0, "extrapolate")
     newsWorthy = 0
-    if month > revisionTimeYears * 12:
+    if month > revisionTimeYears * 12 and revisionTimeYears > 0:
         baseAwareNess += .25
     baseAwareNess = min(1, baseAwareNess)
     return baseAwareNess
@@ -327,12 +473,8 @@ labourBaseCost = 10.7
 
 
 def labourCost(aut, overProduction, month):
-    year = int((month+12)/12)
-    labour = labourBaseCost
-    if year == 1:
-        labour = labourBaseCost* 1.05
-    if year == 2:
-        labour = labourBaseCost*1.05*1.05
+    year = int((month+11)/12)
+    labour = labourBaseCost * (1.05**year)
     # currently hardcoded to 0.99. In future versions, we will give correct values
     apLagPenalty = .99
     cost = 0.1 * (11 - aut) * labour * (1 + 1.5 * overProduction) / (1 + overProduction) / apLagPenalty
@@ -383,6 +525,8 @@ def accessibilityCost(x, numProducts):
         return y(accessibilitySegmentMultiple, x)
 
 
+def testCapacity():
+    print( capacityAndAutomationChangeCost(1800, 2300, 3, 3))
 # oc: old capacity, nc: new capacity, oa: old automation, na: new automation
 def capacityAndAutomationChangeCost(oc, nc, oa, na):
     cost = 0
